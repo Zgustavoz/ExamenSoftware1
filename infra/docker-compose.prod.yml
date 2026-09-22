@@ -1,0 +1,182 @@
+# Producción en un solo servidor (por ejemplo, una instancia EC2 con Docker). Desde la raíz del repositorio:
+#
+#   docker compose --env-file .env.prod -f infra/docker-compose.prod.yml up -d --build
+#
+# Diferencias con docker-compose.yml (que es solo para desarrollo):
+#   - NADA se publica salvo Nginx (puertos 80, y 443 con docker-compose.tls.yml). PostgreSQL, Redis, RabbitMQ,
+#     el backend y el ai-service solo se ven entre sí, dentro de la red de Docker.
+#   - Cada contenedor recibe SOLO las variables que necesita. En desarrollo se les pasa todo el .env, con lo que,
+#     por ejemplo, el backend recibía la clave del proveedor de IA sin necesitarla.
+#   - El backend arranca con el perfil `prod`: no crea usuarios de ejemplo y se niega a arrancar con contraseñas
+#     débiles o claves vacías.
+#   - Redis exige contraseña, RabbitMQ no publica su consola y los registros rotan (no llenan el disco).
+#   - Con PostgreSQL gestionado (RDS) no hace falta el contenedor de la base: ver «COMPOSE_PROFILES» en
+#     .env.prod.example.
+
+name: diagramas-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    # Solo se levanta con el perfil `db` (el valor por omisión). Con RDS se quita ese perfil y se define DB_URL.
+    profiles: ["db"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-diagramas}
+      POSTGRES_USER: ${DB_USER:-diagramas}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatorio, defínelo en .env.prod}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-diagramas} -d ${DB_NAME:-diagramas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+    logging: *logging
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD es obligatorio, defínelo en .env.prod}
+    # Estado efímero (participantes y locks): sin persistencia. La contraseña llega por variable, no por argumento.
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --save '' --appendonly no"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 128m
+    logging: *logging
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER:-diagramas}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD:?RABBIT_PASSWORD es obligatorio, defínelo en .env.prod}
+    volumes:
+      # Solo el plugin STOMP (puerto 61613) que usa el broker relay del backend: sin consola de administración.
+      - ./rabbitmq/enabled_plugins.prod:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      # Se comprueba el puerto STOMP, que es lo que usa el backend. NO se usa `rabbitmq-diagnostics`: el chequeo
+      # corre como root y, si llega antes de que RabbitMQ cree su cookie de Erlang, la crea él con permisos de
+      # root y RabbitMQ ya no puede leerla (`eacces`): se cae en el primer arranque.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 61613"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    mem_limit: 384m
+    logging: *logging
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ../ai-service
+    environment:
+      AI_INTERNAL_KEY: ${AI_INTERNAL_KEY:?AI_INTERNAL_KEY es obligatorio, defínelo en .env.prod}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY es obligatorio, defínelo en .env.prod}
+      LLM_MODEL: ${LLM_MODEL:?LLM_MODEL es obligatorio, defínelo en .env.prod}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-25}
+    mem_limit: 256m
+    logging: *logging
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # Base de datos. Por omisión, el contenedor `postgres`; con RDS, DB_URL apunta a su endpoint.
+      DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/${DB_NAME:-diagramas}}
+      DB_USER: ${DB_USER:-diagramas}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatorio, defínelo en .env.prod}
+      # Seguridad
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET es obligatorio, defínelo en .env.prod}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-60}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?SEED_ADMIN_PASSWORD es obligatorio, defínelo en .env.prod}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS es obligatorio, defínelo en .env.prod}
+      # Colaboración en tiempo real
+      COLLAB_DISTRIBUTED: "true"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      RABBIT_HOST: rabbitmq
+      RABBIT_STOMP_PORT: "61613"
+      RABBIT_USER: ${RABBIT_USER:-diagramas}
+      RABBIT_PASSWORD: ${RABBIT_PASSWORD}
+      # Asistente de IA (el ai-service solo se ve por la red interna)
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_INTERNAL_KEY: ${AI_INTERNAL_KEY}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-30}
+      # Notificaciones push: toda la clave de Firebase en una línea (base64). Vacía = push desactivado.
+      FCM_CREDENTIALS_JSON: ${FCM_CREDENTIALS_JSON:-}
+      # Archivos (XMI) en S3. Sin S3_BUCKET se guardan en el volumen `backend-storage`. Las credenciales de AWS salen
+      # del ROL de la instancia; solo si no hay rol se pasan AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
+      S3_BUCKET: ${S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      STORAGE_LOCAL_DIR: /app/data/storage
+      # Memoria de la JVM: el 75 % del límite del contenedor.
+      JAVA_OPTS: ${BACKEND_JAVA_OPTS:--XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8}
+    volumes:
+      - backend-storage:/app/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false   # no existe si se usa una base gestionada (RDS)
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      # Una instancia pequeña o cargada puede tardar minutos en arrancar Spring Boot (aquí, con el equipo sin memoria
+      # libre, tardó 250 s): el margen es amplio para no dar por caído un arranque lento.
+      start_period: 120s
+      retries: 20
+    mem_limit: 1g
+    logging: *logging
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  nginx:
+    # Compila la SPA de React y la sirve con el Nginx que hace de proxy de /api, /graphql y /ws. Es lo único
+    # que se publica.
+    build:
+      context: ../web
+      args:
+        # Configuración PÚBLICA de Firebase para el push web. Vite la incorpora al paquete al compilar; vacía =
+        # push web desactivado. No son secretos.
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
+        VITE_FIREBASE_VAPID_KEY: ${VITE_FIREBASE_VAPID_KEY:-}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    mem_limit: 64m
+    logging: *logging
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  backend-storage:

@@ -1,0 +1,20 @@
+# HTTPS con Let's Encrypt, sobre docker-compose.prod.yml:
+#
+#   docker compose --env-file .env.prod -f infra/docker-compose.prod.yml -f infra/docker-compose.tls.yml up -d
+#
+# Requisitos: un dominio que apunte al servidor y un certificado emitido con certbot en el propio servidor:
+#   sudo certbot certonly --standalone -d TU-DOMINIO      (con el puerto 80 libre: antes de levantar el compose)
+# y TLS_DOMAIN=TU-DOMINIO en .env.prod. Si en vez de esto pones un balanceador de AWS (ALB) con un certificado de
+# ACM delante, NO hace falta este archivo.
+
+services:
+  nginx:
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      TLS_DOMAIN: ${TLS_DOMAIN:?TLS_DOMAIN es obligatorio para HTTPS, defínelo en .env.prod}
+    volumes:
+      # La imagen de Nginx sustituye ${TLS_DOMAIN} en las plantillas y las deja en conf.d, encima del HTTP.
+      - ./nginx/default.tls.conf.template:/etc/nginx/templates/default.conf.template:ro
+      # Toda la carpeta (no solo live/): los certificados de live/ son enlaces a archive/.
+      - /etc/letsencrypt:/etc/letsencrypt:ro

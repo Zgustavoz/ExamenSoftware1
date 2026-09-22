@@ -1,0 +1,45 @@
+package com.diagramas.platform.common.error;
+
+import org.springframework.http.HttpStatus;
+
+/** Códigos de error compartidos (sección 7.1). */
+public enum ErrorCode {
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),
+    USER_INACTIVE(HttpStatus.FORBIDDEN),
+    COMPANY_DISABLED(HttpStatus.FORBIDDEN),
+    UNAUTHORIZED(HttpStatus.UNAUTHORIZED),
+    FORBIDDEN(HttpStatus.FORBIDDEN),
+    NOT_FOUND(HttpStatus.NOT_FOUND),
+    DUPLICATE_COMPANY(HttpStatus.CONFLICT),
+    DUPLICATE_USER(HttpStatus.CONFLICT),
+    VALIDATION_ERROR(HttpStatus.UNPROCESSABLE_ENTITY),
+    DUPLICATE_PROJECT(HttpStatus.CONFLICT),
+    DUPLICATE_DIAGRAM(HttpStatus.CONFLICT),
+    DUPLICATE_CLASS(HttpStatus.UNPROCESSABLE_ENTITY),
+    INVALID_DATATYPE(HttpStatus.UNPROCESSABLE_ENTITY),
+    DUPLICATE_RELATIONSHIP(HttpStatus.UNPROCESSABLE_ENTITY),
+    INVALID_RELATIONSHIP(HttpStatus.UNPROCESSABLE_ENTITY),
+    OUT_OF_BOUNDS(HttpStatus.UNPROCESSABLE_ENTITY),
+    INVALID_JSON(HttpStatus.UNPROCESSABLE_ENTITY),
+    VERSION_CONFLICT(HttpStatus.CONFLICT),
+    ELEMENT_LOCKED(HttpStatus.CONFLICT),
+    USER_NOT_ELIGIBLE(HttpStatus.UNPROCESSABLE_ENTITY),
+    INVALID_STATE_TRANSITION(HttpStatus.UNPROCESSABLE_ENTITY),
+    AI_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT),
+    AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
+    AI_INVALID_RESPONSE(HttpStatus.BAD_GATEWAY),
+    DIAGRAM_INCOMPLETE(HttpStatus.UNPROCESSABLE_ENTITY),
+    GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR),
+    XMI_INVALID(HttpStatus.UNPROCESSABLE_ENTITY),
+    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
+
+    private final HttpStatus status;
+
+    ErrorCode(HttpStatus status) {
+        this.status = status;
+    }
+
+    public HttpStatus status() {
+        return status;
+    }
+}

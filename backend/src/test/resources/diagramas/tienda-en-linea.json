@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "type": "CLASS",
+  "classes": [
+    {
+      "id": "c1", "name": "Cliente", "stereotype": null, "visibility": "PUBLIC", "x": 60, "y": 80,
+      "attributes": [
+        { "id": "a1", "name": "nombre", "type": "String", "visibility": "PRIVATE" },
+        { "id": "a2", "name": "email", "type": "String", "visibility": "PRIVATE" },
+        { "id": "a3", "name": "telefono", "type": "String", "visibility": "PRIVATE" }
+      ],
+      "methods": [
+        { "id": "m1", "name": "realizarPedido", "returnType": "Pedido", "visibility": "PUBLIC", "parameters": [] },
+        { "id": "m2", "name": "consultarPedidos", "returnType": "List<Pedido>", "visibility": "PUBLIC", "parameters": [] }
+      ]
+    },
+    {
+      "id": "c2", "name": "Pedido", "stereotype": null, "visibility": "PUBLIC", "x": 420, "y": 80,
+      "attributes": [
+        { "id": "a4", "name": "fecha", "type": "LocalDate", "visibility": "PRIVATE" },
+        { "id": "a5", "name": "total", "type": "double", "visibility": "PRIVATE" },
+        { "id": "a6", "name": "estado", "type": "String", "visibility": "PRIVATE" }
+      ],
+      "methods": [
+        { "id": "m3", "name": "agregarProducto", "returnType": "void", "visibility": "PUBLIC",
+          "parameters": [ { "name": "producto", "type": "Producto" }, { "name": "cantidad", "type": "int" } ] },
+        { "id": "m4", "name": "calcularTotal", "returnType": "double", "visibility": "PUBLIC", "parameters": [] },
+        { "id": "m5", "name": "confirmar", "returnType": "void", "visibility": "PUBLIC", "parameters": [] },
+        { "id": "m6", "name": "cancelar", "returnType": "void", "visibility": "PUBLIC", "parameters": [] }
+      ]
+    },
+    {
+      "id": "c3", "name": "Producto", "stereotype": null, "visibility": "PUBLIC", "x": 780, "y": 80,
+      "attributes": [
+        { "id": "a7", "name": "nombre", "type": "String", "visibility": "PRIVATE" },
+        { "id": "a8", "name": "precio", "type": "double", "visibility": "PRIVATE" },
+        { "id": "a9", "name": "stock", "type": "int", "visibility": "PRIVATE" }
+      ],
+      "methods": [
+        { "id": "m7", "name": "hayStock", "returnType": "boolean", "visibility": "PUBLIC",
+          "parameters": [ { "name": "cantidad", "type": "int" } ] },
+        { "id": "m8", "name": "descontarStock", "returnType": "void", "visibility": "PUBLIC",
+          "parameters": [ { "name": "cantidad", "type": "int" } ] }
+      ]
+    },
+    {
+      "id": "c4", "name": "Pago", "stereotype": null, "visibility": "PUBLIC", "x": 420, "y": 400,
+      "attributes": [
+        { "id": "a10", "name": "monto", "type": "double", "visibility": "PRIVATE" },
+        { "id": "a11", "name": "metodo", "type": "String", "visibility": "PRIVATE" }
+      ],
+      "methods": [
+        { "id": "m9", "name": "procesar", "returnType": "boolean", "visibility": "PUBLIC", "parameters": [] }
+      ]
+    }
+  ],
+  "relationships": [
+    { "id": "r1", "type": "ASSOCIATION", "sourceId": "c1", "targetId": "c2",
+      "sourceMultiplicity": "1", "targetMultiplicity": "0..*",
+      "sourceRole": "cliente", "targetRole": "pedidos", "name": "realiza" },
+    { "id": "r2", "type": "ASSOCIATION", "sourceId": "c2", "targetId": "c3",
+      "sourceMultiplicity": "*", "targetMultiplicity": "*",
+      "sourceRole": "pedidos", "targetRole": "productos", "name": "contiene" },
+    { "id": "r3", "type": "COMPOSITION", "sourceId": "c2", "targetId": "c4",
+      "sourceMultiplicity": "1", "targetMultiplicity": "1",
+      "sourceRole": "pedido", "targetRole": "pago", "name": "se paga con" }
+  ]
+}

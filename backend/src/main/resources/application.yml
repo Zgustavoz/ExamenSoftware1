@@ -1,0 +1,98 @@
+spring:
+  application:
+    name: diagramas-platform
+  config:
+    import:
+      # Las variables de entorno viven en el .env de la raíz del repo (ver .env.example).
+      # Se busca tanto al ejecutar desde la raíz como desde backend/.
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
+  profiles:
+    default: dev
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/diagramas}
+    username: ${DB_USER:}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+        type.preferred_instant_jdbc_type: TIMESTAMP
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      repositories:
+        enabled: false
+  graphql:
+    path: /graphql
+    schema:
+      locations: classpath:graphql/
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+server:
+  port: 8080
+  # Al parar el contenedor, las peticiones en curso (y las conexiones de colaboración) terminan antes de cortar.
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+  health:
+    # Redis solo es requisito cuando la colaboración es distribuida
+    redis:
+      enabled: ${app.collab.distributed:false}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:}
+    expiration-minutes: ${JWT_EXPIRATION_MINUTES:60}
+  seed-admin-password: ${SEED_ADMIN_PASSWORD:}
+  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+  rabbit:
+    host: ${RABBIT_HOST:localhost}
+    stomp-port: ${RABBIT_STOMP_PORT:61613}
+    user: ${RABBIT_USER:guest}
+    password: ${RABBIT_PASSWORD:guest}
+  ai:
+    url: ${AI_SERVICE_URL:http://localhost:8000}
+    internal-key: ${AI_INTERNAL_KEY:}
+    timeout-seconds: ${AI_TIMEOUT_SECONDS:30}
+  fcm:
+    # Producción: toda la clave de Firebase en una sola línea (JSON o base64). Desarrollo: ruta a un archivo.
+    credentials-json: ${FCM_CREDENTIALS_JSON:}
+    credentials-path: ${FCM_CREDENTIALS_PATH:}
+  s3:
+    bucket: ${S3_BUCKET:}
+    region: ${AWS_REGION:us-east-1}
+    endpoint: ${S3_ENDPOINT:}
+  storage:
+    local-dir: ${STORAGE_LOCAL_DIR:./data/storage}
+  collab:
+    distributed: ${COLLAB_DISTRIBUTED:false}
+  codegen:
+    base-package: ${CODEGEN_BASE_PACKAGE:com.generated.app}
+
+logging:
+  level:
+    root: INFO
+    com.diagramas: INFO

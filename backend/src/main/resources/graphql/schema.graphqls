@@ -1,0 +1,105 @@
+scalar JSON
+
+enum InputType {
+  TEXTO
+  VOZ
+}
+
+type Query {
+  "CU-05/11: diagramas de un proyecto de la empresa del token"
+  diagrams(projectId: ID!): [Diagram!]!
+  "CU-11"
+  diagram(id: ID!): Diagram
+  "CU-13: historial de conversaciones IA del usuario para un diagrama"
+  aiChats(diagramId: ID!): [AiChat!]!
+  "CU-21: filtrable por diagrama y por estado"
+  tasks(diagramId: ID, status: String): [Task!]!
+  task(id: ID!): Task
+  "CU-21: las asignadas a mí, más las automáticas que lancé yo"
+  myTasks(status: String): [Task!]!
+  "CU-21: las tareas manuales que yo asigné a otras personas"
+  tasksCreatedByMe: [Task!]!
+}
+
+type Mutation {
+  "CU-06"
+  createDiagram(projectId: ID!, name: String!, description: String): Diagram!
+  "CU-10 / CU-18: guardado con control optimista (baseVersion)"
+  saveDiagram(id: ID!, contentJson: JSON!, baseVersion: Int!): Diagram!
+  "CU-12"
+  sendAiInstruction(diagramId: ID!, instruction: String!, inputType: InputType!): AiResult!
+  "CU-12 paso 8 (idempotente)"
+  confirmAiChanges(diagramId: ID!): Diagram!
+  "CU-14"
+  generateBackendCode(diagramId: ID!, language: String!): Task!
+  "CU-20"
+  generateSequenceDiagram(sourceDiagramId: ID!): Diagram!
+  "CU-21: crea una tarea manual y avisa a quien se le asigna"
+  createTask(input: NewTaskInput!): Task!
+  "CU-21: PENDING → IN_PROGRESS → COMPLETED"
+  updateTaskStatus(id: ID!, status: String!): Task!
+  "CU-21: cambia título, descripción y a quién está asignada"
+  updateTask(id: ID!, input: EditTaskInput!): Task!
+  "CU-21: devuelve el id de la tarea eliminada"
+  deleteTask(id: ID!): ID!
+}
+
+input EditTaskInput {
+  assignedTo: ID!
+  title: String!
+  description: String
+}
+
+input NewTaskInput {
+  diagramId: ID!
+  assignedTo: ID!
+  title: String!
+  description: String
+}
+
+type Diagram {
+  id: ID!
+  projectId: ID!
+  name: String!
+  description: String
+  type: String!
+  contentJson: JSON!
+  version: Int!
+  sourceDiagramId: ID
+  createdBy: ID
+  createdAt: String!
+  updatedAt: String!
+}
+
+type AiChat {
+  id: ID!
+  diagramId: ID!
+  title: String
+  messages: JSON!
+  createdAt: String!
+  updatedAt: String!
+}
+
+type AiResult {
+  explanation: String!
+  operations: JSON!
+  diagram: Diagram!
+}
+
+type Task {
+  id: ID!
+  diagramId: ID
+  type: String!
+  title: String!
+  description: String
+  status: String!
+  resultJson: JSON
+  assignedTo: ID
+  "CU-21: nombre de la persona asignada, resuelto solo si se pide"
+  assignedToName: String
+  createdBy: ID
+  createdByName: String
+  createdAt: String!
+  startedAt: String
+  completedAt: String
+}

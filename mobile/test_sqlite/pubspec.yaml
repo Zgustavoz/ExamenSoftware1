@@ -1,0 +1,19 @@
+name: diagramas_movil_sqlite_test
+description: "Prueba el almacén SQLite de la app contra un SQLite de verdad."
+publish_to: 'none'
+
+# Va en un paquete aparte a propósito: sqflite_common_ffi trae `sqlite3`, que en cada compilación descarga
+# una librería nativa. Dentro de la app (aunque fuera como dev_dependency) rompía la compilación del APK.
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  diagramas_movil:
+    path: ..
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  sqflite_common_ffi: ^2.4.3

@@ -1,0 +1,52 @@
+# Superpuesto al docker-compose.yml para desarrollar sin reconstruir imágenes a cada cambio.
+#
+#   docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.dev.yml watch
+#
+# `watch` copia dentro del contenedor en marcha los archivos que cambian (sync) y solo reconstruye cuando
+# cambian las dependencias (rebuild). La aplicación sigue en http://localhost:8081.
+#
+# Cubre el ai-service y el cliente web. Para el backend en Java el camino rápido es ejecutarlo fuera de
+# Docker con `./mvnw spring-boot:run` (ver «Camino rápido de desarrollo» en el README): ya trae DevTools, que
+# lo reinicia solo al recompilar.
+
+services:
+  ai-service:
+    # --reload: uvicorn se reinicia solo al detectar un cambio en el código sincronizado.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    develop:
+      watch:
+        - action: sync
+          path: ../ai-service/app
+          target: /app/app
+        - action: rebuild
+          path: ../ai-service/requirements.txt
+
+  # En desarrollo la SPA la sirve Vite con recarga en caliente, así que el Nginx de producción se queda
+  # parado: un servicio con `profiles` solo arranca si se pide ese perfil por su nombre.
+  nginx:
+    profiles: ['produccion']
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    # `npm ci` solo la primera vez; el volumen anónimo de node_modules evita mezclar las dependencias
+    # compiladas para Windows con las de Linux.
+    command: sh -c "[ -d node_modules/vite ] || npm ci; npm run dev -- --host 0.0.0.0"
+    environment:
+      # Dentro de la red de Docker el backend es un nombre de servicio, no localhost.
+      VITE_BACKEND_URL: http://backend:8080
+    volumes:
+      - ../web:/app
+      - /app/node_modules
+      # Vite lee el .env de la raíz del repositorio (envDir), que fuera del contenedor está un nivel arriba.
+      - ../.env:/.env:ro
+    ports:
+      - '8081:4200'
+    depends_on:
+      backend:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: rebuild
+          path: ../web/package-lock.json
+    restart: unless-stopped

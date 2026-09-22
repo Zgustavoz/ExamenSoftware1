@@ -1,0 +1,139 @@
+# Infraestructura de desarrollo. Ejecutar SIEMPRE desde la raíz del repositorio:
+#   docker compose --env-file .env -f infra/docker-compose.yml up -d --build
+# (--env-file es necesario porque el .env vive en la raíz, no junto a este archivo).
+#
+# El cliente móvil (Flutter) todavía no forma parte de este compose. El servicio "nginx"
+# compila y sirve la SPA de React, y hace de proxy inverso de /api, /graphql y /ws.
+
+name: diagramas
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-diagramas}
+      POSTGRES_USER: ${DB_USER:-diagramas}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatorio, defínelo en el .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      # Puertos del host desplazados para no chocar con otros PostgreSQL/Redis de la máquina.
+      - "127.0.0.1:${DB_PORT:-15432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-diagramas} -d ${DB_NAME:-diagramas}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-16379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER:-diagramas}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD:?RABBIT_PASSWORD es obligatorio, defínelo en el .env}
+    volumes:
+      # Habilita el plugin STOMP (puerto 61613) que usa el broker relay del backend.
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    ports:
+      - "127.0.0.1:61613:61613"  # STOMP
+      - "127.0.0.1:15672:15672"  # consola de administración
+    healthcheck:
+      # Puerto STOMP en vez de `rabbitmq-diagnostics`: ese chequeo corre como root y, si llega antes de que RabbitMQ
+      # cree su cookie de Erlang, la deja con permisos de root y RabbitMQ se cae en el primer arranque (`eacces`).
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 61613"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ../ai-service
+    env_file: ../.env
+    # Nunca se publica hacia fuera del equipo. Dentro de Docker lo ve el backend como ai-service:8000; para el
+    # backend ejecutado en la terminal (camino rápido) se abre solo en 127.0.0.1. No se usa el 8000 del equipo
+    # porque suele estar ocupado por otro proyecto (un Django respondía 404 y el asistente parecía «caído»).
+    expose:
+      - "8000"
+    ports:
+      - "127.0.0.1:${AI_PORT:-18000}:8000"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../backend
+    env_file: ../.env
+    environment:
+      # Dentro de Docker los hosts son los nombres de servicio, no localhost.
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-diagramas}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"   # dentro de la red de Docker es el puerto estándar
+      RABBIT_HOST: rabbitmq
+      AI_SERVICE_URL: http://ai-service:8000
+      COLLAB_DISTRIBUTED: "true"
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      STORAGE_LOCAL_DIR: /app/data/storage
+      # Push por FCM: si existe secrets/firebase-key.json se activa; si no, las notificaciones solo se guardan en BD.
+      FCM_CREDENTIALS_PATH: /run/secrets/firebase-key.json
+    volumes:
+      - backend-storage:/app/data/storage
+      # Carpeta (no archivo) de secretos: funciona aunque esté vacía y evita que Docker cree un directorio
+      # falso donde debería ir fcm.json. La carpeta está en .gitignore.
+      - ../secrets:/run/secrets:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    # La imagen compila la SPA de React y la sirve; la configuración del proxy (web/nginx) va dentro de la imagen.
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+      # Configuración pública de Firebase para el push web; vacía = push desactivado.
+      args:
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
+        VITE_FIREBASE_VAPID_KEY: ${VITE_FIREBASE_VAPID_KEY:-}
+    ports:
+      - "8081:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # 127.0.0.1 y no localhost: dentro del contenedor localhost resuelve primero a ::1, y Nginx
+      # solo escucha en IPv4, asi que la comprobacion fallaba siempre.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  backend-storage:

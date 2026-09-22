@@ -1,0 +1,29 @@
+# Secretos y datos locales
+.env
+# Variables de produccion (el ejemplo, .env.prod.example, si se sube)
+.env.prod
+*.pem
+fcm.json
+secrets/
+
+# Informes de caida de la JVM (aparecen cuando el equipo se queda sin memoria)
+hs_err_pid*.log
+replay_pid*.log
+
+# Backend (Maven / Spring)
+backend/target/
+backend/data/
+*.class
+
+# ai-service (Python)
+ai-service/.venv/
+**/__pycache__/
+.pytest_cache/
+*.pyc
+
+# IDE / SO
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
