@@ -19,7 +19,7 @@ class ProductionSettingsTest {
                 new AppProperties.Rabbit("rabbitmq", 61613, "diagramas", rabbitPassword),
                 new AppProperties.Ai("http://ai-service:8000", aiKey, 30),
                 new AppProperties.Fcm("", ""),
-                new AppProperties.S3("", "us-east-1", ""),
+                new AppProperties.Blob("", "", ""),
                 new AppProperties.Storage("./data/storage"),
                 new AppProperties.Collab(distributed),
                 new AppProperties.Codegen("com.generated.app"));

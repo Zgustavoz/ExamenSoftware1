@@ -120,11 +120,11 @@ services:
       AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-30}
       # Notificaciones push: toda la clave de Firebase en una línea (base64). Vacía = push desactivado.
       FCM_CREDENTIALS_JSON: ${FCM_CREDENTIALS_JSON:-}
-      # Archivos (XMI) en S3. Sin S3_BUCKET se guardan en el volumen `backend-storage`. Las credenciales de AWS salen
-      # del ROL de la instancia; solo si no hay rol se pasan AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
-      S3_BUCKET: ${S3_BUCKET:-}
-      AWS_REGION: ${AWS_REGION:-us-east-1}
-      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      # Archivos (XMI) en Azure Blob Storage. Sin AZURE_STORAGE_CONTAINER se guardan en el volumen `backend-storage`.
+      # Sin AZURE_STORAGE_CONNECTION_STRING se autentica con la Managed Identity de la VM (recomendado).
+      AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-}
+      AZURE_STORAGE_ACCOUNT_URL: ${AZURE_STORAGE_ACCOUNT_URL:-}
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
       STORAGE_LOCAL_DIR: /app/data/storage
       # Memoria de la JVM: el 75 % del límite del contenedor.
       JAVA_OPTS: ${BACKEND_JAVA_OPTS:--XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8}

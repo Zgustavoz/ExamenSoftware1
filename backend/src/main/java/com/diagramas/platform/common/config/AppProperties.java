@@ -12,7 +12,7 @@ public record AppProperties(
         Rabbit rabbit,
         Ai ai,
         Fcm fcm,
-        S3 s3,
+        Blob blob,
         Storage storage,
         Collab collab,
         Codegen codegen) {
@@ -25,7 +25,7 @@ public record AppProperties(
 
     public record Fcm(String credentialsPath, String credentialsJson) {}
 
-    public record S3(String bucket, String region, String endpoint) {}
+    public record Blob(String connectionString, String accountUrl, String container) {}
 
     public record Storage(String localDir) {}
 

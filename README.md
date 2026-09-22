@@ -18,7 +18,7 @@ Proyecto del examen de Ingeniería de Software 1 (UAGRM, gestión 2-2026).
                        │                                         ├─► Redis        (presencia y locks)    │
                        │   Solo Nginx se publica.                ├─► RabbitMQ     (difusión STOMP)       │
                        │                                         ├─► ai-service   (FastAPI) ──► LLM      │
-                       └─────────────────────────────────────────┴─► FCM (push) · AWS S3 (archivos)  ────┘
+                       └─────────────────────────────────────────┴─► FCM (push) · Azure Blob Storage (archivos) ─┘
 ```
 
 | Capa | Tecnología |
@@ -28,7 +28,7 @@ Proyecto del examen de Ingeniería de Software 1 (UAGRM, gestión 2-2026).
 | Móvil | Flutter / Dart, SQLite (`sqflite`), Firebase Cloud Messaging |
 | IA | Python 3.11, FastAPI, proveedor LLM intercambiable (OpenAI o compatible, como Gemini; o local) |
 | Datos | PostgreSQL 16 (JSONB), Redis 7, RabbitMQ 4 (plugin STOMP) |
-| Archivos | AWS S3 (o disco local si no hay bucket) |
+| Archivos | Azure Blob Storage (o disco local si no hay contenedor configurado) |
 | Infra | Docker / Docker Compose, Nginx |
 
 Reparto de protocolos: **REST** para acceso, administración y soporte; **GraphQL** para diagramas, IA, tareas y
@@ -111,34 +111,30 @@ Entra como `demo` / `designer` y sigue este orden; cada paso es un caso de uso.
    «Sin limitaciones» y se envía sola.
 10. **Seguridad entre empresas**: un usuario de otra empresa no ve nada de esta; el recurso ajeno responde `404`.
 
-## Producción en AWS (EC2 + Docker + S3)
+## Producción en Azure (VM + Docker + Blob Storage)
 
-Es la arquitectura del enunciado: **una instancia EC2 con Docker Compose**, un **bucket S3** para los archivos y,
-opcionalmente, **RDS** para la base de datos. Todo el repositorio está preparado; lo único que tú pones es la
-cuenta de AWS y los secretos.
+Es la arquitectura del enunciado adaptada a Azure: **una VM con Docker Compose**, un **contenedor de Blob Storage**
+para los archivos y, opcionalmente, **Azure Database for PostgreSQL** para la base de datos. Todo el repositorio
+está preparado; lo único que tú pones es la cuenta de Azure y los secretos.
 
-### 1. Lo que se crea en AWS
+### 1. Lo que se crea en Azure
 
 | Recurso | Configuración recomendada |
 |---|---|
-| **EC2** | Ubuntu 24.04 · **t3.medium (4 GB)** como mínimo cómodo (el compose limita la memoria a ≈ 2,4 GB) · disco de 20 GB |
-| **Grupo de seguridad** | Entrada: **80** y **443** desde cualquier lugar; **22** solo desde tu IP. Nada más: PostgreSQL, Redis y RabbitMQ no se publican |
-| **Bucket S3** | Privado (*Block all public access* activado). Guarda los XMI exportados bajo `xmi/<empresa>/<diagrama>/` |
-| **Rol de IAM** de la instancia | Solo permiso de escritura en el bucket (abajo). **Sin claves de acceso en ningún archivo** |
-| **Elastic IP** + dominio | Para que la dirección no cambie y poder emitir el certificado HTTPS |
-| **RDS PostgreSQL** (opcional) | Si no lo usas, PostgreSQL corre en un contenedor con volumen (`postgres-data`) |
+| **VM (Azure Virtual Machines)** | Ubuntu Server 24.04 LTS · **Standard_B2ms (4 GB)** como mínimo cómodo (el compose limita la memoria a ≈ 2,4 GB) · disco de 20 GB |
+| **Grupo de seguridad de red (NSG)** | Entrada: **80** y **443** desde cualquier lugar; **22** solo desde tu IP. Nada más: PostgreSQL, Redis y RabbitMQ no se publican |
+| **Cuenta de almacenamiento + contenedor de Blob Storage** | Privado (acceso público deshabilitado). Guarda los XMI exportados bajo `xmi/<empresa>/<diagrama>/` |
+| **Identidad administrada (Managed Identity)** asignada a la VM | Solo el rol **Storage Blob Data Contributor** sobre la cuenta de almacenamiento (abajo). **Sin claves de acceso en ningún archivo** |
+| **IP pública estática** + dominio | Para que la dirección no cambie y poder emitir el certificado HTTPS |
+| **Azure Database for PostgreSQL** (opcional) | Si no lo usas, PostgreSQL corre en un contenedor con volumen (`postgres-data`) |
 
-Política del rol de IAM (cambia el nombre del bucket):
+Asignación de rol para la identidad administrada (cambia el nombre de la cuenta de almacenamiento y del grupo de recursos):
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["s3:PutObject"],
-    "Resource": "arn:aws:s3:::NOMBRE-DEL-BUCKET/xmi/*"
-  }]
-}
+```bash
+az role assignment create \
+  --assignee <principal-id-de-la-identidad-administrada> \
+  --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/<suscripcion>/resourceGroups/<grupo-de-recursos>/providers/Microsoft.Storage/storageAccounts/NOMBRE-DE-LA-CUENTA"
 ```
 
 ### 2. En el servidor
@@ -163,9 +159,9 @@ publica su consola; los registros rotan; y hay límites de memoria y `restart: u
 
 ### 3. HTTPS
 
-- **Opción A, recomendada en AWS: un balanceador (ALB) con certificado de ACM** delante de la instancia. El
-  certificado es gratuito y se renueva solo. No hace falta tocar nada de este repositorio: el ALB reenvía al puerto
-  80 y admite WebSocket.
+- **Opción A, recomendada en Azure: Application Gateway (o Azure Front Door) con certificado gestionado** delante
+  de la VM. El certificado se renueva solo. No hace falta tocar nada de este repositorio: el gateway reenvía al
+  puerto 80 y admite WebSocket.
 - **Opción B, en la propia instancia, con Let's Encrypt:**
 
 ```bash
@@ -189,22 +185,23 @@ Todas están explicadas en [`.env.prod.example`](.env.prod.example). Las obligat
 | `AI_INTERNAL_KEY` | clave entre el backend y el ai-service (≥ 16) | `openssl rand -base64 32` |
 | `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | proveedor del modelo de lenguaje | tu cuenta (p. ej. Google AI Studio) |
 | `CORS_ALLOWED_ORIGINS` | origen público de la aplicación | `https://tu-dominio` |
-| `S3_BUCKET`, `AWS_REGION` | dónde se guardan los XMI | el bucket del paso 1 |
+| `AZURE_STORAGE_CONTAINER`, `AZURE_STORAGE_ACCOUNT_URL` | dónde se guardan los XMI (con Managed Identity, sin clave) | la cuenta y el contenedor del paso 1 |
 | `FCM_CREDENTIALS_JSON` | clave de Firebase **en una sola línea** (base64) | ver abajo |
 | `VITE_FIREBASE_*` | configuración pública de Firebase para el push web | consola de Firebase |
 
 **La clave de Firebase en una línea.** No hace falta montar ningún archivo: toda la clave de la cuenta de servicio va en
 la variable `FCM_CREDENTIALS_JSON`, en base64 (no tiene comillas ni `\n`, así que sobrevive a Docker, a un `.env` y a
-la consola de AWS). El backend acepta también el JSON tal cual en una línea.
+la consola de Azure). El backend acepta también el JSON tal cual en una línea.
 
 ```powershell
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("secrets\firebase-key.json"))   # PowerShell
 base64 -w0 secrets/firebase-key.json                                              # Linux / macOS
 ```
 
-**Base de datos gestionada (RDS).** Deja `COMPOSE_PROFILES=` vacío en `.env.prod` y define
-`DB_URL=jdbc:postgresql://<endpoint>:5432/diagramas` (con `DB_USER`/`DB_PASSWORD` de RDS): el contenedor de
-PostgreSQL deja de levantarse. Las migraciones de Flyway se aplican solas al arrancar.
+**Base de datos gestionada (Azure Database for PostgreSQL).** Deja `COMPOSE_PROFILES=` vacío en `.env.prod` y define
+`DB_URL=jdbc:postgresql://<servidor>.postgres.database.azure.com:5432/diagramas?sslmode=require` (con
+`DB_USER`/`DB_PASSWORD` del servidor gestionado): el contenedor de PostgreSQL deja de levantarse. Las migraciones de
+Flyway se aplican solas al arrancar.
 
 ### 5. Operación
 
@@ -221,13 +218,13 @@ docker compose --env-file .env.prod -f infra/docker-compose.prod.yml exec -T pos
   pg_dump -U diagramas diagramas | gzip > respaldo-$(date +%F).sql.gz
 ```
 
-Con RDS, las copias las hace RDS (activa los *backups* automáticos). Comprobación de salud: `GET /healthz` (Nginx)
-y, dentro de la red, `/actuator/health` (backend).
+Con Azure Database for PostgreSQL, las copias las hace el servicio gestionado (activa los *backups* automáticos).
+Comprobación de salud: `GET /healthz` (Nginx) y, dentro de la red, `/actuator/health` (backend).
 
 ### 6. Lista de comprobación de seguridad
 
-- Secretos solo en `.env.prod` (fuera de git) y **nunca en las imágenes**; el rol de IAM en vez de claves de AWS.
-- Grupo de seguridad con solo 80/443 abiertos; SSH restringido a tu IP.
+- Secretos solo en `.env.prod` (fuera de git) y **nunca en las imágenes**; Managed Identity en vez de claves de Azure Storage.
+- Grupo de seguridad de red (NSG) con solo 80/443 abiertos; SSH restringido a tu IP.
 - Cabeceras de seguridad en Nginx (`X-Frame-Options`, `nosniff`, `Referrer-Policy`, HSTS con HTTPS).
 - `company_id` siempre del JWT; recurso de otra empresa → `404`, no `403`. XMI protegido contra XXE; ZIP contra zip-slip.
 - El backend revalida toda la salida de la IA. El `ai-service` no se publica y exige la clave interna.
@@ -258,8 +255,8 @@ Las nueve pruebas de aceptación del documento tienen cobertura automatizada:
 | CP-09 colaboración en vivo | `CollabStompIT` (local) y `DistributedCollabIT` (Redis y RabbitMQ reales) |
 
 Además: aislamiento entre empresas, autorización por rol, `VERSION_CONFLICT`, `ELEMENT_LOCKED`, XXE, zip-slip,
-configuración de producción (`ProductionSettingsTest`), almacenamiento en S3 contra un S3 real (`S3StorageIT`, con
-MinIO) y credenciales de Firebase en una línea (`FcmCredentialsTest`).
+configuración de producción (`ProductionSettingsTest`), almacenamiento en Azure Blob Storage contra un emulador real
+(`AzureBlobStorageIT`, con Azurite) y credenciales de Firebase en una línea (`FcmCredentialsTest`).
 
 ## API en una página
 

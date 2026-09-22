@@ -81,10 +81,10 @@ app:
     # Producción: toda la clave de Firebase en una sola línea (JSON o base64). Desarrollo: ruta a un archivo.
     credentials-json: ${FCM_CREDENTIALS_JSON:}
     credentials-path: ${FCM_CREDENTIALS_PATH:}
-  s3:
-    bucket: ${S3_BUCKET:}
-    region: ${AWS_REGION:us-east-1}
-    endpoint: ${S3_ENDPOINT:}
+  blob:
+    connection-string: ${AZURE_STORAGE_CONNECTION_STRING:}
+    account-url: ${AZURE_STORAGE_ACCOUNT_URL:}
+    container: ${AZURE_STORAGE_CONTAINER:}
   storage:
     local-dir: ${STORAGE_LOCAL_DIR:./data/storage}
   collab:
