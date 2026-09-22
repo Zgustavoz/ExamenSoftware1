@@ -16,7 +16,7 @@ class FakeApi implements Api {
   Completer<void>? puerta;
 
   @override
-  Future<String> login(String username, String password) async => 'jwt-de-prueba';
+  Future<String> login(String companySlug, String username, String password) async => 'jwt-de-prueba';
 
   @override
   Future<List<({String id, String name})>> diagrams(String token) async => [(id: 'd1', name: 'Ventas · Dominio')];

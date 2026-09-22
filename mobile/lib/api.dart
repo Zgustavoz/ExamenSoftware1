@@ -43,7 +43,7 @@ class CommandResult {
   );
 }
 
-/// Cliente de la plataforma. La dirección se pasa al compilar:
+/// Cliente de la plataforma. Apunta al servidor desplegado; para trabajar contra el PC se compila con
 /// `flutter run --dart-define=API_URL=http://10.0.2.2:8080`
 /// (10.0.2.2 es como el emulador de Android ve el localhost del PC).
 class Api {
@@ -51,11 +51,11 @@ class Api {
 
   static const String baseUrl = String.fromEnvironment(
     'API_URL',
-    defaultValue: 'http://10.0.2.2:8080',
+    defaultValue: 'http://diagramas-software1.chilecentral.cloudapp.azure.com',
   );
-  static const String companySlug = String.fromEnvironment('COMPANY_SLUG', defaultValue: 'demo');
+  static const String defaultCompanySlug = String.fromEnvironment('COMPANY_SLUG', defaultValue: 'demo');
 
-  Future<String> login(String username, String password) async {
+  Future<String> login(String companySlug, String username, String password) async {
     final r = await _post('/api/auth/login', {
       'companySlug': companySlug,
       'username': username,
@@ -64,8 +64,18 @@ class Api {
     return r['token'] as String;
   }
 
-  /// Los diagramas de todos los proyectos de la empresa, para elegir contra cuál se dictan las órdenes.
+  /// Los diagramas de clases con código ya generado, que son los únicos contra los que tiene sentido dictar
+  /// una orden. Se muestran como «Proyecto / Diagrama», ordenados para que queden agrupados por proyecto.
   Future<List<({String id, String name})>> diagrams(String token) async {
+    final generadas = await _graphql(token, r'query($s: String) { tasks(status: $s) { type diagramId } }', {
+      's': 'COMPLETED',
+    });
+    final conCodigo = {
+      for (final t in (generadas['tasks'] as List).cast<Map<String, dynamic>>())
+        if (t['type'] == 'CODE_GENERATION' && t['diagramId'] != null) t['diagramId'] as String,
+    };
+    if (conCodigo.isEmpty) return const [];
+
     final projects = await _get('/api/projects?size=100', token);
     final content = (projects['content'] as List).cast<Map<String, dynamic>>();
 
@@ -75,11 +85,12 @@ class Api {
         'p': project['id'],
       });
       for (final d in (data['diagrams'] as List).cast<Map<String, dynamic>>()) {
-        if (d['type'] == 'CLASS') {
-          result.add((id: d['id'] as String, name: '${project['name']} · ${d['name']}'));
+        if (d['type'] == 'CLASS' && conCodigo.contains(d['id'])) {
+          result.add((id: d['id'] as String, name: '${project['name']} / ${d['name']}'));
         }
       }
     }
+    result.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return result;
   }
 

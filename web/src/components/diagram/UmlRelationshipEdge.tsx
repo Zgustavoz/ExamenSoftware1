@@ -119,30 +119,35 @@ export function UmlMarkers() {
         </marker>
         <marker
           id="uml-diamond-hollow"
-          viewBox="0 0 16 12"
-          refX="1"
-          refY="6"
-          markerWidth="14"
-          markerHeight="11"
+          viewBox="0 0 22 16"
+          refX="21"
+          refY="8"
+          markerWidth="19"
+          markerHeight="14"
           orient="auto-start-reverse"
         >
           <path
-            d="M 1 6 L 8 1 L 15 6 L 8 11 z"
+            d="M 1 8 L 11 1 L 21 8 L 11 15 z"
             fill="var(--color-card)"
             stroke="var(--color-foreground)"
-            strokeWidth="1.2"
+            strokeWidth="1.8"
           />
         </marker>
         <marker
           id="uml-diamond-filled"
-          viewBox="0 0 16 12"
-          refX="1"
-          refY="6"
-          markerWidth="14"
-          markerHeight="11"
+          viewBox="0 0 22 16"
+          refX="21"
+          refY="8"
+          markerWidth="19"
+          markerHeight="14"
           orient="auto-start-reverse"
         >
-          <path d="M 1 6 L 8 1 L 15 6 L 8 11 z" fill="var(--color-foreground)" />
+          <path
+            d="M 1 8 L 11 1 L 21 8 L 11 15 z"
+            fill="var(--color-foreground)"
+            stroke="var(--color-foreground)"
+            strokeWidth="1.8"
+          />
         </marker>
         <marker
           id="uml-open-arrow"

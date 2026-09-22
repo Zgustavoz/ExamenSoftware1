@@ -126,8 +126,14 @@ services:
       AZURE_STORAGE_ACCOUNT_URL: ${AZURE_STORAGE_ACCOUNT_URL:-}
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
       STORAGE_LOCAL_DIR: /app/data/storage
+      # Backend generado que corre la demo del móvil (no forma parte de este compose). Con Tailscale/ngrok,
+      # aquí va la URL de esa máquina; si se deja el valor por omisión, hace falta el extra_hosts de abajo.
+      GENERATED_APP_URL: ${GENERATED_APP_URL:-http://host.docker.internal:8090}
       # Memoria de la JVM: el 75 % del límite del contenedor.
       JAVA_OPTS: ${BACKEND_JAVA_OPTS:--XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8}
+    extra_hosts:
+      # En Linux, a diferencia de Docker Desktop, host.docker.internal no se resuelve solo.
+      - "host.docker.internal:host-gateway"
     volumes:
       - backend-storage:/app/data/storage
     depends_on:

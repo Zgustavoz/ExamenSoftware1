@@ -32,6 +32,7 @@ class CommandPage extends StatefulWidget {
 class _CommandPageState extends State<CommandPage> {
   final _speech = SpeechToText();
   final _instruction = TextEditingController();
+  final _company = TextEditingController(text: Api.defaultCompanySlug);
   final _username = TextEditingController(text: 'designer');
   final _password = TextEditingController();
 
@@ -73,6 +74,7 @@ class _CommandPageState extends State<CommandPage> {
     _registrar.dispose();
     if (_ownsSync) _sync.dispose();
     _instruction.dispose();
+    _company.dispose();
     _username.dispose();
     _password.dispose();
     super.dispose();
@@ -109,16 +111,20 @@ class _CommandPageState extends State<CommandPage> {
   }
 
   Future<void> _login() => _run(() async {
-    final token = await widget.api.login(_username.text.trim(), _password.text);
+    final empresa = _company.text.trim();
+    final token = await widget.api.login(empresa, _username.text.trim(), _password.text);
     final diagrams = await widget.api.diagrams(token);
     setState(() {
       _token = token;
       _diagrams = diagrams;
       _diagramId = diagrams.isEmpty ? null : diagrams.first.id;
-      _notice = null;
+      _notice = diagrams.isEmpty
+          ? 'Ningún diagrama tiene código generado todavía. Genérelo desde la web (Código → Generar código) '
+                'y vuelva a entrar.'
+          : null;
     });
     // Las órdenes que quedaron guardadas de otra vez se cargan y, si hay red, se envían.
-    await _sync.signIn(Session(token: token, owner: '${Api.companySlug}/${_username.text.trim()}'));
+    await _sync.signIn(Session(token: token, owner: '$empresa/${_username.text.trim()}'));
     unawaited(_registrar.start(token));
     if (_diagramId != null) await _loadEntities();
   });
@@ -262,7 +268,18 @@ class _CommandPageState extends State<CommandPage> {
     const Text('Entre con su usuario para elegir el diagrama.'),
     const SizedBox(height: 12),
     TextField(
+      controller: _company,
+      autocorrect: false,
+      decoration: const InputDecoration(
+        labelText: 'Empresa',
+        hintText: 'el identificador de su empresa',
+        border: OutlineInputBorder(),
+      ),
+    ),
+    const SizedBox(height: 12),
+    TextField(
       controller: _username,
+      autocorrect: false,
       decoration: const InputDecoration(labelText: 'Usuario', border: OutlineInputBorder()),
     ),
     const SizedBox(height: 12),

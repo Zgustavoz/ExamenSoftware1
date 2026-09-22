@@ -9,7 +9,7 @@ class _FakeApi implements Api {
   bool fallaLogin = false;
 
   @override
-  Future<String> login(String username, String password) async {
+  Future<String> login(String companySlug, String username, String password) async {
     if (fallaLogin) throw ApiError('INVALID_CREDENTIALS', 'Empresa, usuario o contraseña incorrectos.');
     return 'jwt-de-prueba';
   }

@@ -91,6 +91,8 @@ app:
     distributed: ${COLLAB_DISTRIBUTED:false}
   codegen:
     base-package: ${CODEGEN_BASE_PACKAGE:com.generated.app}
+  generated-app:
+    url: ${GENERATED_APP_URL:http://host.docker.internal:8090}
 
 logging:
   level:
